@@ -1,0 +1,6 @@
+[submodule "trackingImgLabel"]
+	path = trackingImgLabel
+	url = https://github.com/zhangzjn/trackingImgLabel
+[submodule "pyqt5"]
+	path = pyqt5
+	url = https://github.com/baoboa/pyqt5

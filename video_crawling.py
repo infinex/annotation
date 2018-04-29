@@ -5,7 +5,7 @@ import os.path
 
 if not os.path.isdir('./videos/'):
     os.mkdir('./videos')
-driver = webdriver.Chrome(executable_path = '/usr/local/bin/chromedriver')
+driver = webdriver.Chrome(executable_path = '/Users/yj/Projects/Python/notebook/chrome/chromedriver')
 driver.get("https://helpx.adobe.com/creative-cloud/tutorials-explore.html")
 
 tutorials = driver.find_elements_by_class_name("learn-card")

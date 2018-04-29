@@ -5,18 +5,19 @@
 from PyQt5.QtCore import (pyqtSignal, pyqtSlot, Q_ARG, QAbstractItemModel,
         QFileInfo, qFuzzyCompare, QMetaObject, QModelIndex, QObject, Qt,
         QThread, QTime, QUrl)
-from PyQt5.QtGui import QColor, qGray, QImage, QPainter, QPalette
+from PyQt5.QtGui import QColor, qGray, QImage, QPainter, QPalette,QKeySequence
 from PyQt5.QtMultimedia import (QAbstractVideoBuffer, QMediaContent,
-        QMediaMetaData, QMediaPlayer, QMediaPlaylist, QVideoFrame, QVideoProbe)
+        QMediaMetaData, QMediaPlayer, QMediaPlaylist, QVideoFrame, QVideoProbe,)
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog,
         QFormLayout, QHBoxLayout, QLabel, QListView, QMessageBox, QPushButton,
-        QSizePolicy, QSlider, QStyle, QToolButton, QVBoxLayout, QWidget, QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QLineEdit)
+        QSizePolicy, QSlider, QStyle, QToolButton, QVBoxLayout, QWidget, QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QLineEdit,QShortcut)
 import os
+import glob
 
-SEGMENT_DIR = './segments/'
-VIDEO_DIR = './videos/'
-SCRIPT_DIR = './scripts/'
+SEGMENT_DIR = 'segments/'
+VIDEO_DIR = 'videos/'
+SCRIPT_DIR = 'scripts/'
 
 class TreeWidgetItem(QTreeWidgetItem):
     def __init__(self, parent=None):
@@ -83,7 +84,8 @@ class PlaylistModel(QAbstractItemModel):
         if index.isValid() and role == Qt.DisplayRole:
             if index.column() == self.Title:
                 location = self.m_playlist.media(index.row()).canonicalUrl()
-                return QFileInfo(location.path()).fileName()
+                curr_abs_path = os.path.dirname(os.path.abspath(__file__))
+                return os.path.relpath(location.url().split(":")[1], start=os.path.join(curr_abs_path,VIDEO_DIR))
  
             return self.m_data[index]
  
@@ -201,6 +203,7 @@ class PlayerControls(QWidget):
                 self.stopButton.setEnabled(False)
                 self.playButton.setIcon(
                         self.style().standardIcon(QStyle.SP_MediaPlay))
+
             elif state == QMediaPlayer.PlayingState:
                 self.stopButton.setEnabled(True)
                 self.playButton.setIcon(
@@ -403,6 +406,9 @@ class Player(QWidget):
         self.addBtn = QPushButton("Add")
         self.addBtn.clicked.connect(self.addSegment)
 
+        self.removeBtn = QPushButton("Remove Segement")
+        self.removeBtn.clicked.connect(self.removeItem)
+
         self.saveBtn = QPushButton("Save")
         self.saveBtn.clicked.connect(self.saveSegments)
 
@@ -443,11 +449,14 @@ class Player(QWidget):
         controls.stop.connect(self.videoWidget.update)
  
         self.player.stateChanged.connect(controls.setState)
+        self.player.stateChanged.connect(self.StateChangeShortcut)
+
         self.player.volumeChanged.connect(controls.setVolume)
         self.player.mutedChanged.connect(controls.setMuted)
 
         self.segmentButton = QPushButton("Segment")
         self.segmentButton.clicked.connect(self.createNewSegment)
+        self.segmentButton.clicked.connect(self.addSegment)
         # self.segmentButton.setCheckable(True)
 
         self.fullScreenButton = QPushButton("FullScreen")
@@ -485,6 +494,7 @@ class Player(QWidget):
         controlLayout.addWidget(controls)
         controlLayout.addStretch(1)
         controlLayout.addWidget(self.segmentButton)
+        controlLayout.addWidget(self.removeBtn)
         controlLayout.addWidget(self.addBtn)
         controlLayout.addWidget(self.saveBtn)
         controlLayout.addWidget(self.fullScreenButton)
@@ -498,8 +508,15 @@ class Player(QWidget):
         layout.addLayout(hLayout)
         layout.addLayout(controlLayout)
         # layout.addLayout(histogramLayout)
- 
+
         self.setLayout(layout)
+
+        self.pausePlayShortcut = QShortcut(QKeySequence(Qt.Key_Space), self)
+        self.addSegmentShortcut = QShortcut(QKeySequence(Qt.Key_A), self)
+        self.removeSegmentShortcut = QShortcut(QKeySequence(Qt.Key_S), self)
+
+
+        self.shortcut()
  
         if not self.player.isAvailable():
             QMessageBox.warning(self, "Service not available",
@@ -515,13 +532,29 @@ class Player(QWidget):
         self.metaDataChanged()
  
         self.addToPlaylist(playlist)
-    
+
+    def shortcut(self):
+        self.addSegmentShortcut.activated.connect(self.createNewSegment)
+        self.addSegmentShortcut.activated.connect(self.addSegment)
+        self.removeSegmentShortcut.activated.connect(self.removeItem)
+        self.pausePlayShortcut.activated.connect(self.player.play);
+
+    def StateChangeShortcut(self):
+        if self.player.state() == QMediaPlayer.StoppedState:
+            self.pausePlayShortcut.activated.connect(self.player.play);
+        if self.player.state() == QMediaPlayer.PausedState:
+            self.pausePlayShortcut.activated.connect(self.player.play);
+        if self.player.state() == QMediaPlayer.PlayingState:
+            self.pausePlayShortcut.activated.connect(self.player.pause);
+
+
     def open(self):
         fileNames, _ = QFileDialog.getOpenFileNames(self, "Open Files")
         self.addToPlaylist(fileNames)
 
     def open_folder(self, folder_path):
-        fileNames = [folder_path+x for x in os.listdir(folder_path) if x.endswith('.mp4')]
+        # fileNames = [x in glob.glob(folder_path + "*") if x.endswith('.mp4')]
+        fileNames = [x for x in glob.glob(folder_path + "**",recursive=True) if x.endswith('.mp4')]
         self.addToPlaylist(fileNames)
  
     def addToPlaylist(self, fileNames):
@@ -547,9 +580,12 @@ class Player(QWidget):
         item.setText(4, self.behaviorTextInput.text())
         item.setFlags(item.flags() | Qt.ItemIsEditable)
         self.segmentList.addTopLevelItem(item)
-        self.segmentList.sortByColumn(1, Qt.AscendingOrder)
 
-    
+        #self.segmentList.sortByColumn(1, Qt.AscendingOrder)
+
+    def removeItem(self):
+        self.segmentList.takeTopLevelItem(self.segmentList.topLevelItemCount()-1)
+
     def saveSegments(self):
         itemCnt = self.segmentList.topLevelItemCount()
         colCnt = self.segmentList.columnCount()
